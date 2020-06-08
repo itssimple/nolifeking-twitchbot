@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <RootNamespace>NoLifeKing_TwitchBot</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="TwitchLib" Version="3.1.1" />
+    <PackageReference Include="WebSocketSharp-netstandard" Version="1.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Libraries\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="KeyVault.Client">
+      <HintPath>Libraries\KeyVault.Client.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>
