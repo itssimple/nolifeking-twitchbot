@@ -3,7 +3,6 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.IO;
-using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using TwitchLib.Api;
@@ -229,109 +228,13 @@ namespace NoLifeKing_TwitchBot
 
             private void HandleOverWolfEvents(JObject item)
             {
-                var ignoredFeatures = new string[] { "location" };
-
-                if (item["feature"] != null && !ignoredFeatures.Contains(item["feature"].ToString()))
+                if (item["game"] != null)
                 {
-                    switch (item["feature"].ToString())
+                    switch (item["game"].ToString())
                     {
-                        case "rank":
-                            if (!string.IsNullOrWhiteSpace(item["info"]?["match_info"]?["victory"]?.ToString()))
-                            {
-                                if ((bool)item["info"]["match_info"]["victory"])
-                                {
-                                    PlayerStats.Wins++;
-                                }
-                                else
-                                {
-                                    PlayerStats.Losses++;
-                                }
-                            }
+                        case "APEX":
+                            PlayerStats.OverwolfApexData((JObject)item["data"]);
                             break;
-                        case "match_summary":
-                            if (!string.IsNullOrWhiteSpace(item["info"]?["match_info"]?["match_summary"]?.ToString()))
-                            {
-                                var jsObj = (JObject)JsonConvert.DeserializeObject(item["info"]?["match_info"]?["match_summary"]?.ToString());
-                                PlayerStats.SquadKills += (int)jsObj["squadKills"];
-                            }
-                            break;
-                        default:
-                            //LogToConsole(item);
-                            break;
-                    }
-
-                    PlayerStats.SaveToStreamFile();
-                }
-                else
-                {
-                    if (item["events"] != null)
-                    {
-                        foreach (var eventItem in (JArray)item["events"])
-                        {
-                            var eventItemData = (JObject)JsonConvert.DeserializeObject(eventItem["data"].ToString());
-
-                            switch (eventItem["name"].ToString())
-                            {
-                                case "match_start":
-                                    PlayerStats.CurrentlyAlive = true;
-                                    break;
-                                case "match_end":
-                                    PlayerStats.CurrentlyAlive = false;
-                                    break;
-                                case "death":
-                                    PlayerStats.Deaths++;
-                                    PlayerStats.CurrentlyAlive = false;
-                                    break;
-                                case "respawn":
-                                    PlayerStats.CurrentlyAlive = true;
-                                    break;
-                                case "healed_from_ko":
-                                    PlayerStats.CurrentlyAlive = true;
-                                    break;
-                                case "knocked_out":
-                                    PlayerStats.KnockedOut++;
-                                    break;
-                                case "kill":
-                                    PlayerStats.Kills++;
-                                    break;
-                                case "knockdown":
-                                    PlayerStats.Knockdowns++;
-                                    break;
-                                case "assist":
-                                    PlayerStats.Assists++;
-                                    break;
-                                case "damage":
-                                    if (PlayerStats.CurrentlyAlive)
-                                    {
-                                        PlayerStats.TotalDamageDealt += (double)eventItemData["damageAmount"];
-                                        if ((bool)eventItemData["headshot"])
-                                        {
-                                            PlayerStats.Headshots++;
-                                        }
-                                    }
-                                    break;
-                                case "kill_feed":
-                                    if (!string.IsNullOrWhiteSpace(eventItemData["local_player_name"]?.ToString()))
-                                    {
-                                        PlayerStats.LocalPlayerName = eventItemData["local_player_name"].ToString();
-                                    }
-
-                                    if (eventItemData["attackerName"].ToString() == PlayerStats.LocalPlayerName)
-                                    {
-                                        var killActions = new string[] { "kill", "Bleed Out" };
-                                        if (killActions.Contains(eventItemData["action"].ToString()))
-                                        {
-                                            PlayerStats.Kills++;
-                                        }
-                                    }
-                                    break;
-                                default:
-                                    //LogToConsole(eventItemData);
-                                    break;
-                            }
-                        }
-
-                        PlayerStats.SaveToStreamFile();
                     }
                 }
             }
