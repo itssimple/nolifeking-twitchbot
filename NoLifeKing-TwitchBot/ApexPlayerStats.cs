@@ -27,6 +27,11 @@ namespace NoLifeKing_TwitchBot
 
         private string LastStats { get; set; }
 
+        public ApexPlayerStats()
+        {
+            SaveToStreamFile();
+        }
+
         public void OverwolfApexData(JObject item)
         {
             var ignoredFeatures = new string[] { "location" };
