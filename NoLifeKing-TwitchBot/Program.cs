@@ -1,7 +1,6 @@
 ﻿using KeyVault.Client;
 using Microsoft.AspNetCore.Hosting;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -15,12 +14,11 @@ using TwitchLib.Api;
 using TwitchLib.Client;
 using TwitchLib.Client.Models;
 using TwitchLib.PubSub;
-using WebSocketSharp;
 using WebSocketSharp.Server;
 
 namespace NoLifeKing_TwitchBot
 {
-    public class Program
+    public partial class Program
     {
         static TwitchAPI TwitchAPIClient;
         static TwitchClient TwitchIRCClient;
@@ -320,31 +318,6 @@ namespace NoLifeKing_TwitchBot
         private static void LogToConsole(string jsonData)
         {
             Console.WriteLine($"{DateTime.Now.ToString()} :: {jsonData}");
-        }
-
-        public class OverWolfBehavior : WebSocketBehavior
-        {
-            protected override void OnMessage(MessageEventArgs e)
-            {
-                var data = (JObject)JsonConvert.DeserializeObject(e.Data);
-
-                HandleOverWolfEvents(data);
-                LogToConsole(data);
-                base.OnMessage(e);
-            }
-
-            private void HandleOverWolfEvents(JObject item)
-            {
-                if (item["game"] != null)
-                {
-                    switch (item["game"].ToString())
-                    {
-                        case "APEX":
-                            PlayerStats.OverwolfApexData((JObject)item["data"]);
-                            break;
-                    }
-                }
-            }
         }
     }
 }
