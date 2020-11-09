@@ -157,7 +157,9 @@ Damage dealt:      {TotalDamageDealt}
 Headshots:         {Headshots}
 
 Wins:              {Wins}
-Losses:            {Losses}";
+Losses:            {Losses}
+
+Alive:             {(CurrentlyAlive ? "Yes" : "No")}";
 
             if (LastStats != apexStats)
             {
