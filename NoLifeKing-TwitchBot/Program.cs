@@ -1,9 +1,15 @@
 ﻿using KeyVault.Client;
+using Microsoft.AspNetCore.Hosting;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Net.Http;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using TwitchLib.Api;
 using TwitchLib.Client;
@@ -14,7 +20,7 @@ using WebSocketSharp.Server;
 
 namespace NoLifeKing_TwitchBot
 {
-    class Program
+    public class Program
     {
         static TwitchAPI TwitchAPIClient;
         static TwitchClient TwitchIRCClient;
@@ -28,12 +34,47 @@ namespace NoLifeKing_TwitchBot
 
         internal static string TwitchIRCName;
 
+        public static string VerificationCode = "";
+        public static string VerificationState = "";
+
+        static string[] TwitchScopes = new[] {
+            "analytics:read:extensions",
+            "analytics:read:games",
+            "bits:read",
+            "channel:edit:commercial",
+            "channel:manage:broadcast",
+            "channel:moderate",
+            "channel:read:hype_train",
+            "channel:read:stream_key",
+            "channel:read:subscriptions",
+            "chat:edit",
+            "chat:read",
+            "clips:edit",
+            "user:edit",
+            "user:edit:follows",
+            "user:read:broadcast",
+            "user:read:email",
+            "whispers:edit",
+            "whispers:read",
+            "channel_read",
+            "user_follows_edit",
+            "channel_editor",
+            "channel_commercial",
+            "channel_subscriptions"
+        };
+        private static IWebHost host;
+        const string TwitchRedirectUri = "http://localhost:51145/twitch_auth";
+
         async static Task Main(string[] args)
         {
             if (!await SetupKeyVaultClient(args))
             {
                 return;
             }
+
+            CancellationTokenSource cts = new CancellationTokenSource();
+
+            var server = SetupWebserver(cts.Token);
 
             var channelId = await SetTwitchAPIClient();
 
@@ -44,10 +85,27 @@ namespace NoLifeKing_TwitchBot
 
             Console.ReadLine();
 
+            LogToConsole("Shutting down Twitch bot, IRC, PubSub, WebSocket and WebServer");
+
             TwitchIRCClient.Disconnect();
             TwitchPubSubClient.Disconnect();
 
             WebsocketServer.Stop();
+
+            cts.Cancel();
+
+            LogToConsole("Everything shut down, thank you!");
+        }
+
+        private static Task SetupWebserver(CancellationToken ct)
+        {
+            host = new WebHostBuilder()
+                .UseKestrel()
+                .UseUrls("http://localhost:51145")
+                .UseStartup<Startup>()
+                .Build();
+
+            return host.RunAsync(ct);
         }
 
         private async static Task<bool> SetupKeyVaultClient(string[] args)
@@ -88,7 +146,7 @@ namespace NoLifeKing_TwitchBot
                     return false;
                 }
 
-                Console.WriteLine("Authenticated with KeyVault-API");
+                Console.WriteLine($"Authenticated with KeyVault-API: {checkCert}");
             }
 
             return true;
@@ -105,15 +163,64 @@ namespace NoLifeKing_TwitchBot
 
             TwitchAPIClient.Settings.ClientId = await KeyVaultClient.GetSecretAsync("TwitchClientId");
             TwitchAPIClient.Settings.Secret = await KeyVaultClient.GetSecretAsync("TwitchSecret");
-            TwitchAPIClient.Settings.AccessToken = await KeyVaultClient.GetSecretAsync("TwitchAccessToken");
 
-            var user = await TwitchAPIClient.V5.Users.GetUserAsync();
-            var authedChannel = await TwitchAPIClient.V5.Channels.GetChannelAsync();
-            var channelId = authedChannel.Id;
+            string accessToken = await FetchTwitchAccessToken(TwitchAPIClient.Settings.ClientId, TwitchAPIClient.Settings.Secret);
+
+            TwitchAPIClient.Settings.AccessToken = accessToken;
+
+            var user = (await TwitchAPIClient.Helix.Users.GetUsersAsync()).Users.First();
 
             LogToConsole($"Logged in and authenticated as {user.DisplayName}");
 
-            return channelId;
+            return user.Id;
+        }
+
+        private async static Task<string> FetchTwitchAccessToken(string clientId, string secret)
+        {
+            var state = Convert.ToBase64String(Encoding.Default.GetBytes(DateTime.UtcNow.Ticks.ToString()));
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = $"https://id.twitch.tv/oauth2/authorize?response_type=code&client_id={clientId}&redirect_uri={TwitchRedirectUri}&scope={string.Join("+", TwitchScopes)}&state={state}",
+                UseShellExecute = true
+            };
+
+            var process = Process.Start(psi);
+
+            while (string.IsNullOrWhiteSpace(VerificationCode))
+            {
+                Thread.Sleep(100);
+            }
+
+            process?.Dispose();
+
+            if (state != VerificationState)
+            {
+                LogToConsole("Verifying state failed");
+                throw new Exception("Invalid state");
+            }
+
+            using var client = new HttpClient();
+
+            var res = await client.PostAsync(
+                $"https://id.twitch.tv/oauth2/token?client_id={clientId}&client_secret={secret}&code={VerificationCode}&grant_type=authorization_code&redirect_uri={TwitchRedirectUri}",
+                new StringContent("")
+            );
+
+            if (res.IsSuccessStatusCode)
+            {
+                LogToConsole("Managed to login to Twitch!");
+                var json = await res.Content.ReadAsStringAsync();
+
+                dynamic tokenData = JsonConvert.DeserializeObject(json);
+                return tokenData.access_token;
+            }
+
+            var errorMsg = await res.Content.ReadAsStringAsync();
+            LogToConsole("Error when authenticating to Twitch");
+            LogToConsole(errorMsg);
+
+            throw new Exception("Could not authenticate with Twitch");
         }
 
         private static void SetupIRCClient()
