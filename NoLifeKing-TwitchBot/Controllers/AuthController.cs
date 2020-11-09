@@ -15,8 +15,9 @@ namespace NoLifeKing_TwitchBot.Controllers
 <title>NoLifeKing85 bot auth</title>
 </head>
 <body>
+Authentication is done, this window will close itself in 5 seconds (or so)
 <script type=""text/javascript"">
-window.close();
+setTimeout(function() {{ window.close(); }}, 5000);
 </script>
 </body>
 </html>", "text/html");
