@@ -43,6 +43,7 @@ namespace NoLifeKing_TwitchBot
             "channel:manage:broadcast",
             "channel:moderate",
             "channel:read:hype_train",
+            "channel:read:redemptions",
             "channel:read:stream_key",
             "channel:read:subscriptions",
             "chat:edit",
