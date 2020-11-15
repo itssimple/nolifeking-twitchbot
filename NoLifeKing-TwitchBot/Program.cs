@@ -62,7 +62,11 @@ namespace NoLifeKing_TwitchBot
             "channel_subscriptions"
         };
         private static IWebHost host;
+#if DEBUG
         const string TwitchRedirectUri = "http://localhost:51145/twitch_auth";
+#else
+        const string TwitchRedirectUri = "https://twitch-bot.itssimple.se/twitch_auth";
+#endif
 
         async static Task Main(string[] args)
         {
@@ -167,7 +171,7 @@ namespace NoLifeKing_TwitchBot
 
             TwitchAPIClient.Settings.AccessToken = accessToken;
 
-            var user = (await TwitchAPIClient.Helix.Users.GetUsersAsync()).Users.First();
+            var user = (await TwitchAPIClient.Helix.Users.GetUsersAsync(new System.Collections.Generic.List<string>() { "101962985" })).Users.First();
 
             LogToConsole($"Logged in and authenticated as {user.DisplayName}");
 
@@ -176,48 +180,107 @@ namespace NoLifeKing_TwitchBot
 
         private async static Task<string> FetchTwitchAccessToken(string clientId, string secret)
         {
-            var state = Convert.ToBase64String(Encoding.Default.GetBytes(DateTime.UtcNow.Ticks.ToString()));
-
-            var psi = new ProcessStartInfo
-            {
-                FileName = $"https://id.twitch.tv/oauth2/authorize?response_type=code&client_id={clientId}&redirect_uri={TwitchRedirectUri}&scope={string.Join("+", TwitchScopes)}&state={state}",
-                UseShellExecute = true
-            };
-
-            var process = Process.Start(psi);
-
-            while (string.IsNullOrWhiteSpace(VerificationCode))
-            {
-                Thread.Sleep(100);
-            }
-
-            process?.Dispose();
-
-            if (state != VerificationState)
-            {
-                LogToConsole("Verifying state failed");
-                throw new Exception("Invalid state");
-            }
-
             using var client = new HttpClient();
 
-            var res = await client.PostAsync(
-                $"https://id.twitch.tv/oauth2/token?client_id={clientId}&client_secret={secret}&code={VerificationCode}&grant_type=authorization_code&redirect_uri={TwitchRedirectUri}",
-                new StringContent("")
-            );
+            var previousAccessToken = await KeyVaultClient.GetSecretAsync("TwitchAccessToken");
+            var refreshToken = await KeyVaultClient.GetSecretAsync("TwitchRefreshToken");
 
-            if (res.IsSuccessStatusCode)
+            bool tokenStillValid = false;
+
+            if (!string.IsNullOrWhiteSpace(previousAccessToken))
             {
-                LogToConsole("Managed to login to Twitch!");
-                var json = await res.Content.ReadAsStringAsync();
+                tokenStillValid = true;
 
-                dynamic tokenData = JsonConvert.DeserializeObject(json);
-                return tokenData.access_token;
+                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("OAuth", previousAccessToken);
+                var validateOldToken = await client.GetAsync("https://id.twitch.tv/oauth2/validate");
+
+                var content = await validateOldToken.Content.ReadAsStringAsync();
+
+                client.DefaultRequestHeaders.Authorization = null;
+
+                if (!validateOldToken.IsSuccessStatusCode)
+                {
+                    if (!string.IsNullOrWhiteSpace(refreshToken))
+                    {
+                        var res = await client.PostAsync(
+                            $"https://id.twitch.tv/oauth2/token?client_id={clientId}&client_secret={secret}&code={VerificationCode}&grant_type=refresh_token&refresh_token={refreshToken}",
+                            new StringContent("")
+                        );
+
+                        if (res.IsSuccessStatusCode)
+                        {
+                            LogToConsole("Managed to login to Twitch!");
+                            var json = await res.Content.ReadAsStringAsync();
+
+                            dynamic tokenData = JsonConvert.DeserializeObject(json);
+
+                            await KeyVaultClient.SaveSecretAsync("TwitchAccessToken", tokenData.access_token);
+                            await KeyVaultClient.SaveSecretAsync("TwitchRefreshToken", tokenData.refresh_token);
+
+                            return tokenData.access_token;
+                        }
+                    }
+                    else
+                    {
+                        tokenStillValid = false;
+                    }
+                }
+                else
+                {
+                    return previousAccessToken;
+                }
             }
 
-            var errorMsg = await res.Content.ReadAsStringAsync();
-            LogToConsole("Error when authenticating to Twitch");
-            LogToConsole(errorMsg);
+            if (!tokenStillValid)
+            {
+                var state = Convert.ToBase64String(Encoding.Default.GetBytes(DateTime.UtcNow.Ticks.ToString()));
+                var authUrl = $"https://id.twitch.tv/oauth2/authorize?response_type=code&client_id={clientId}&redirect_uri={TwitchRedirectUri}&scope={string.Join("+", TwitchScopes)}&state={state}";
+
+#if DEBUG
+                var psi = new ProcessStartInfo
+                {
+                    FileName = authUrl,
+                    UseShellExecute = true
+                };
+
+                using var process = Process.Start(psi);
+#else
+                Console.WriteLine("Please open this link to fix the authentication for the bot.");
+                Console.WriteLine(authUrl);
+#endif
+                while (string.IsNullOrWhiteSpace(VerificationCode))
+                {
+                    Thread.Sleep(500);
+                }
+
+                if (state != VerificationState)
+                {
+                    LogToConsole("Verifying state failed");
+                    throw new Exception("Invalid state");
+                }
+
+                var res = await client.PostAsync(
+                    $"https://id.twitch.tv/oauth2/token?client_id={clientId}&client_secret={secret}&code={VerificationCode}&grant_type=authorization_code&redirect_uri={TwitchRedirectUri}",
+                    new StringContent("")
+                );
+
+                if (res.IsSuccessStatusCode)
+                {
+                    LogToConsole("Managed to login to Twitch!");
+                    var json = await res.Content.ReadAsStringAsync();
+
+                    dynamic tokenData = JsonConvert.DeserializeObject(json);
+
+                    await KeyVaultClient.SaveSecretAsync("TwitchAccessToken", tokenData.access_token.ToString());
+                    await KeyVaultClient.SaveSecretAsync("TwitchRefreshToken", tokenData.refresh_token.ToString());
+
+                    return tokenData.access_token;
+                }
+
+                var errorMsg = await res.Content.ReadAsStringAsync();
+                LogToConsole("Error when authenticating to Twitch");
+                LogToConsole(errorMsg);
+            }
 
             throw new Exception("Could not authenticate with Twitch");
         }
@@ -230,8 +293,24 @@ namespace NoLifeKing_TwitchBot
             TwitchIRCClient.OnJoinedChannel += (sender, args) => channel = TwitchIRCClient.GetJoinedChannel(args.Channel);
             TwitchIRCClient.OnLog += (sender, args) => HandleIRCLog(args);
 
-            TwitchIRCClient.Initialize(creds, TwitchIRCName);
+            TwitchIRCClient.OnChatCommandReceived += TwitchIRCClient_OnChatCommandReceived;
+
+            TwitchIRCClient.Initialize(creds, "nolifeking85");
             TwitchIRCClient.Connect();
+        }
+
+        private static void TwitchIRCClient_OnChatCommandReceived(object sender, TwitchLib.Client.Events.OnChatCommandReceivedArgs e)
+        {
+            if (e.Command.CommandIdentifier != '!') return;
+
+            switch (e.Command.CommandText.ToLowerInvariant())
+            {
+                case "arch":
+                    TwitchIRCClient.SendMessage(channel, "🎉 Don't forget to say Happy Birthday to @arch_who_says_ni ! It's his birthday today! 🎉 <3");
+                    return;
+            }
+
+            LogToConsole(e);
         }
 
         private static void SetupPubSubClient(string channelId)

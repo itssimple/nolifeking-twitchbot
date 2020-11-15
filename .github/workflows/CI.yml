@@ -1,0 +1,31 @@
+name: Continous integration
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: 3.1.x
+
+    - name: Install Octopus CLI
+      run: |
+        sudo apt update && sudo apt install --no-install-recommends gnupg curl ca-certificates apt-transport-https && \
+        curl -sSfL https://apt.octopus.com/public.key | sudo apt-key add - && \
+        sudo sh -c "echo deb https://apt.octopus.com/ stable main > /etc/apt/sources.list.d/octopus.com.list" && \
+        sudo apt update && sudo apt install octopuscli
+
+    - name: Build and package site for publish
+      run: |
+        cd NoLifeKing-TwitchBot && \
+        dotnet publish NoLifeKing-TwitchBot.csproj --output published-app --verbosity q --configuration Release && \
+        octo pack --id="nolifeking-twitchbot" --version="$PACKAGE_VERSION" --basePath="./published-app" --outFolder="./published-app" && \
+        octo push --package="./published-app/nolifeking-twitchbot.$PACKAGE_VERSION.nupkg" --server="${{ secrets.OCTOPUS_SERVER_URL }}" --apiKey="${{ secrets.OCTOPUS_API_KEY }}"
