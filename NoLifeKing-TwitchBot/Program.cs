@@ -98,6 +98,9 @@ namespace NoLifeKing_TwitchBot
             TwitchIRCClient.Disconnect();
             TwitchPubSubClient.Disconnect();
 
+            await DiscordSocketClient.LogoutAsync();
+            DiscordSocketClient?.Dispose();
+
             WebsocketServer.Stop();
 
             cts.Cancel();
