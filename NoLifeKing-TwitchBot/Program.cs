@@ -1,4 +1,5 @@
-﻿using KeyVault.Client;
+﻿using Discord.WebSocket;
+using KeyVault.Client;
 using Microsoft.AspNetCore.Hosting;
 using Newtonsoft.Json;
 using System;
@@ -25,6 +26,8 @@ namespace NoLifeKing_TwitchBot
         static TwitchPubSub TwitchPubSubClient;
         static WebSocketServer WebsocketServer;
         static JoinedChannel channel = null;
+
+        static DiscordSocketClient DiscordSocketClient;
 
         static KeyVaultClient KeyVaultClient;
 
@@ -86,6 +89,8 @@ namespace NoLifeKing_TwitchBot
 
             SetupWebsocketServer();
 
+            await SetupDiscordBot();
+
             Console.ReadLine();
 
             LogToConsole("Shutting down Twitch bot, IRC, PubSub, WebSocket and WebServer");
@@ -98,6 +103,41 @@ namespace NoLifeKing_TwitchBot
             cts.Cancel();
 
             LogToConsole("Everything shut down, thank you!");
+        }
+
+        private static async Task SetupDiscordBot()
+        {
+            DiscordSocketClient = new DiscordSocketClient();
+            DiscordSocketClient.Log += (args) =>
+            {
+                LogToConsole(args);
+                return Task.CompletedTask;
+            };
+
+            DiscordSocketClient.MessageReceived += DiscordSocketClient_MessageReceived;
+
+            DiscordSocketClient.Ready += DiscordSocketClient_Ready;
+
+            var botToken = await KeyVaultClient.GetSecretAsync("DiscordBotToken");
+
+            await DiscordSocketClient.LoginAsync(Discord.TokenType.Bot, botToken);
+            await DiscordSocketClient.StartAsync();
+        }
+
+        private static Task DiscordSocketClient_MessageReceived(SocketMessage arg)
+        {
+            if (arg.Author.IsBot || arg.Author.Id == DiscordSocketClient.CurrentUser.Id) return Task.CompletedTask;
+
+            //arg.Channel.SendMessageAsync($"You wrote: {arg.Content}");
+
+            //LogToConsole(arg);
+            return Task.CompletedTask;
+        }
+
+        private static Task DiscordSocketClient_Ready()
+        {
+            LogToConsole("Discord bot is ready");
+            return Task.CompletedTask;
         }
 
         private static Task SetupWebserver(CancellationToken ct)
@@ -203,7 +243,7 @@ namespace NoLifeKing_TwitchBot
                     if (!string.IsNullOrWhiteSpace(refreshToken))
                     {
                         var res = await client.PostAsync(
-                            $"https://id.twitch.tv/oauth2/token?client_id={clientId}&client_secret={secret}&code={VerificationCode}&grant_type=refresh_token&refresh_token={refreshToken}",
+                            $"https://id.twitch.tv/oauth2/token?client_id={clientId}&client_secret={secret}&grant_type=refresh_token&refresh_token={refreshToken}",
                             new StringContent("")
                         );
 
@@ -214,8 +254,8 @@ namespace NoLifeKing_TwitchBot
 
                             dynamic tokenData = JsonConvert.DeserializeObject(json);
 
-                            await KeyVaultClient.SaveSecretAsync("TwitchAccessToken", tokenData.access_token);
-                            await KeyVaultClient.SaveSecretAsync("TwitchRefreshToken", tokenData.refresh_token);
+                            await KeyVaultClient.SaveSecretAsync("TwitchAccessToken", tokenData.access_token.ToString());
+                            await KeyVaultClient.SaveSecretAsync("TwitchRefreshToken", tokenData.refresh_token.ToString());
 
                             return tokenData.access_token;
                         }
@@ -392,12 +432,12 @@ namespace NoLifeKing_TwitchBot
 
         private static void LogToConsole<T>(T logData)
         {
-            LogToConsole($"{logData.GetType().Name}\n{JsonConvert.SerializeObject(logData, Formatting.Indented)}\n");
+            LogToConsole($"{logData.GetType().Name}\n{JsonConvert.SerializeObject(logData, Formatting.Indented, new JsonSerializerSettings() { ReferenceLoopHandling = ReferenceLoopHandling.Ignore })}\n");
         }
 
         private static void LogToConsole(string jsonData)
         {
-            Console.WriteLine($"{DateTime.Now.ToString()} :: {jsonData}");
+            Console.WriteLine($"{DateTime.Now} :: {jsonData}");
         }
     }
 }
