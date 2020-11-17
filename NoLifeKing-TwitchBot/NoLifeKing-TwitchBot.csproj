@@ -8,20 +8,11 @@
 
   <ItemGroup>
     <PackageReference Include="Discord.Net" Version="2.2.0" />
+    <PackageReference Include="itssimple.KeyVault.Client" Version="1.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Hosting" Version="2.2.7" />
     <PackageReference Include="Microsoft.AspNetCore.Owin" Version="3.1.9" />
     <PackageReference Include="TwitchLib" Version="3.1.1" />
     <PackageReference Include="WebSocketSharp-netstandard" Version="1.0.1" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Libraries\" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="KeyVault.Client">
-      <HintPath>Libraries\KeyVault.Client.dll</HintPath>
-    </Reference>
   </ItemGroup>
 
 </Project>
