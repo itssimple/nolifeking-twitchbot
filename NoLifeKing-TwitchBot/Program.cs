@@ -348,8 +348,16 @@ namespace NoLifeKing_TwitchBot
 
             TwitchIRCClient.OnChatCommandReceived += TwitchIRCClient_OnChatCommandReceived;
 
+            TwitchIRCClient.AutoReListenOnException = true;
+            TwitchIRCClient.OnConnectionError += TwitchIRCClient_OnConnectionError;
+
             TwitchIRCClient.Initialize(creds, "nolifeking85");
             TwitchIRCClient.Connect();
+        }
+
+        private static void TwitchIRCClient_OnConnectionError(object sender, TwitchLib.Client.Events.OnConnectionErrorArgs e)
+        {
+            TwitchIRCClient.Reconnect();
         }
 
         private static void TwitchIRCClient_OnChatCommandReceived(object sender, TwitchLib.Client.Events.OnChatCommandReceivedArgs e)
