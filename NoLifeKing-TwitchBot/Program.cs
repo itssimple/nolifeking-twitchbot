@@ -38,6 +38,8 @@ namespace NoLifeKing_TwitchBot
         public static string VerificationCode = "";
         public static string VerificationState = "";
 
+        const string CommandIdentifier = "!";
+
         static string[] TwitchScopes = new[] {
             "analytics:read:extensions",
             "analytics:read:games",
@@ -130,6 +132,14 @@ namespace NoLifeKing_TwitchBot
         private static Task DiscordSocketClient_MessageReceived(SocketMessage arg)
         {
             if (arg.Author.IsBot || arg.Author.Id == DiscordSocketClient.CurrentUser.Id) return Task.CompletedTask;
+
+            if (arg.Content.StartsWith(CommandIdentifier))
+            {
+                var commandData = arg.Content.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                var command = commandData[0].Replace(CommandIdentifier, "");
+                var args = commandData.Skip(1).ToArray();
+                HandleCommands(false, command, args);
+            }
 
             //arg.Channel.SendMessageAsync($"You wrote: {arg.Content}");
 
@@ -346,14 +356,28 @@ namespace NoLifeKing_TwitchBot
         {
             if (e.Command.CommandIdentifier != '!') return;
 
-            switch (e.Command.CommandText.ToLowerInvariant())
-            {
-                case "arch":
-                    TwitchIRCClient.SendMessage(channel, "🎉 Don't forget to say Happy Birthday to @arch_who_says_ni ! It's his birthday today! 🎉 <3");
-                    return;
-            }
+            HandleCommands(true, e.Command.CommandText, e.Command.ArgumentsAsList.ToArray());
 
             LogToConsole(e);
+        }
+
+        private static void HandleCommands(bool isIRC, string commandIdentifier, params string[] arguments)
+        {
+            switch (commandIdentifier)
+            {
+                case "discord":
+                    if (isIRC)
+                    {
+                        TwitchIRCClient.SendMessage(channel, "You can join my discord by clicking this link: https://discord.gg/6fP8vWW");
+                    }
+                    break;
+                case "commands":
+                    if (isIRC)
+                    {
+                        TwitchIRCClient.SendMessage(channel, "!discord, !commands (this command)");
+                    }
+                    break;
+            }
         }
 
         private static void SetupPubSubClient(string channelId)
