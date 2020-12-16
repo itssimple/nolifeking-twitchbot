@@ -33,12 +33,25 @@ namespace NoLifeKing_TwitchBot
 
         static ApexPlayerStats PlayerStats = new ApexPlayerStats();
 
+        static Counters Counters = new Counters();
+        static AccessManager AccessManager = new AccessManager();
+
         internal static string TwitchIRCName;
 
         public static string VerificationCode = "";
         public static string VerificationState = "";
 
         const string CommandIdentifier = "!";
+
+        internal static ISocketMessageChannel _lastDiscordChannel;
+
+        static string[] availableCommands = new[]
+        {
+            "commands",
+            "discord",
+            "access",
+            "counter"
+        };
 
         static string[] TwitchScopes = new[] {
             "analytics:read:extensions",
@@ -85,6 +98,8 @@ namespace NoLifeKing_TwitchBot
             var server = SetupWebserver(cts.Token);
 
             var channelId = await SetTwitchAPIClient();
+
+            await AccessManager.AddAccessAsync(true, channelId);
 
             SetupIRCClient();
             SetupPubSubClient(channelId);
@@ -135,15 +150,19 @@ namespace NoLifeKing_TwitchBot
 
             if (arg.Content.StartsWith(CommandIdentifier))
             {
+                var isAuthorized = AccessManager.HasAccess(false, arg.Author.Id.ToString());
+
                 var commandData = arg.Content.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                 var command = commandData[0].Replace(CommandIdentifier, "");
                 var args = commandData.Skip(1).ToArray();
-                HandleCommands(false, command, args);
+
+                _lastDiscordChannel = arg.Channel;
+
+                _ = HandleCommands(false, isAuthorized, command, args);
+
+                LogToConsole($"Discord command: {arg.Content}");
             }
 
-            //arg.Channel.SendMessageAsync($"You wrote: {arg.Content}");
-
-            //LogToConsole(arg);
             return Task.CompletedTask;
         }
 
@@ -351,12 +370,13 @@ namespace NoLifeKing_TwitchBot
             TwitchIRCClient.AutoReListenOnException = true;
             TwitchIRCClient.OnConnectionError += TwitchIRCClient_OnConnectionError;
 
-            TwitchIRCClient.Initialize(creds, "nolifeking85");
+            TwitchIRCClient.Initialize(creds, TwitchIRCName);
             TwitchIRCClient.Connect();
         }
 
         private static void TwitchIRCClient_OnConnectionError(object sender, TwitchLib.Client.Events.OnConnectionErrorArgs e)
         {
+            LogToConsole(e);
             TwitchIRCClient.Reconnect();
         }
 
@@ -364,27 +384,91 @@ namespace NoLifeKing_TwitchBot
         {
             if (e.Command.CommandIdentifier != '!') return;
 
-            HandleCommands(true, e.Command.CommandText, e.Command.ArgumentsAsList.ToArray());
+            var userIsAuthenticated = AccessManager.HasAccess(true, e.Command.ChatMessage.UserId.ToString());
+
+            _ = HandleCommands(true, userIsAuthenticated, e.Command.CommandText, e.Command.ArgumentsAsList.ToArray());
 
             LogToConsole(e);
         }
 
-        private static void HandleCommands(bool isIRC, string commandIdentifier, params string[] arguments)
+        private async static Task HandleCommands(bool isIRC, bool isAuthorized, string commandIdentifier, params string[] arguments)
         {
             switch (commandIdentifier)
             {
                 case "discord":
-                    if (isIRC)
-                    {
-                        TwitchIRCClient.SendMessage(channel, "You can join my discord by clicking this link: https://discord.gg/6fP8vWW");
-                    }
+                    await ReplyToService(isIRC, "You can join my discord by clicking this link: https://discord.gg/6fP8vWW");
                     break;
                 case "commands":
-                    if (isIRC)
-                    {
-                        TwitchIRCClient.SendMessage(channel, "!discord, !commands (this command)");
-                    }
+                    await ReplyToService(isIRC, string.Join(", ", availableCommands.Select(s => $"!{s}")));
                     break;
+                case "access":
+                    if (isAuthorized) await HandleAccessCommand(isIRC, arguments);
+                    break;
+                case "counter":
+                    if (isAuthorized) await HandleCounterCommand(isIRC, arguments);
+                    break;
+            }
+        }
+
+        private async static Task HandleAccessCommand(bool isIRC, string[] arguments)
+        {
+            if (arguments.Length < 2)
+            {
+                await ReplyToService(isIRC, "Too few arguments. :)");
+            }
+            else
+            {
+                var command = arguments[0];
+                var service = arguments[1];
+                var user = arguments[2];
+
+                switch (command)
+                {
+                    case "add":
+                        await AccessManager.AddAccessAsync(service.ToLower() == "twitch", user);
+                        break;
+                    case "remove":
+                        await AccessManager.RemoveAccessAsync(service.ToLower() == "twitch", user);
+                        break;
+                }
+            }
+        }
+
+        private async static Task HandleCounterCommand(bool isIRC, string[] arguments)
+        {
+            if (arguments.Length == 1)
+            {
+                var response = Counters.HasCounter(arguments[0])
+                    ? $"{arguments[0]}: {(await Counters.ChangeValueAsync(arguments[0], 0)).ToString("n0")}"
+                    : $"{arguments[0]}: This counter doesn't exist yet";
+
+                await ReplyToService(isIRC, response);
+            }
+            else if (arguments.Length == 2)
+            {
+                var counter = arguments[0];
+                var value = arguments[1];
+                if (long.TryParse(value, out long counterValue))
+                {
+                    await ReplyToService(isIRC, $"{counter}: {(await Counters.ChangeValueAsync(counter, counterValue)).ToString("n0")}");
+                }
+                else
+                {
+                    await ReplyToService(isIRC, $"{counter}: {value} is not a number");
+                }
+            }
+        }
+
+        private async static Task ReplyToService(bool isIRC, string response)
+        {
+            if (isIRC)
+            {
+                TwitchIRCClient.SendMessage(channel, response);
+            }
+            else
+            {
+                await _lastDiscordChannel?.SendMessageAsync(response);
+                _lastDiscordChannel = null;
             }
         }
 

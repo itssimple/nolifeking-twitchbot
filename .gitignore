@@ -12,6 +12,9 @@
 
 launchSettings.json
 
+counters.json
+access.json
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
