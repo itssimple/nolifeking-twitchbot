@@ -384,7 +384,7 @@ namespace NoLifeKing_TwitchBot
         {
             if (e.Command.CommandIdentifier != '!') return;
 
-            var userIsAuthenticated = AccessManager.HasAccess(true, e.Command.ChatMessage.UserId.ToString());
+            var userIsAuthenticated = e.Command.ChatMessage.IsBroadcaster || e.Command.ChatMessage.IsModerator || AccessManager.HasAccess(true, e.Command.ChatMessage.UserId.ToString());
 
             _ = HandleCommands(true, userIsAuthenticated, e.Command.CommandText, e.Command.ArgumentsAsList.ToArray());
 
@@ -539,13 +539,11 @@ namespace NoLifeKing_TwitchBot
 
         private static void HandleReward(TwitchLib.PubSub.Events.OnRewardRedeemedArgs args)
         {
+            LogToConsole(args);
+
             if (args.Status == "ACTION_TAKEN")
             {
                 TwitchIRCClient.SendMessage(channel, $"I completed '{args.RewardTitle}' redeemed by @{args.DisplayName}!");
-            }
-            else
-            {
-                LogToConsole(args);
             }
         }
 
