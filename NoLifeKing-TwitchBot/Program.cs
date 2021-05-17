@@ -50,7 +50,8 @@ namespace NoLifeKing_TwitchBot
             "commands",
             "discord",
             "access",
-            "counter"
+            "counter",
+            "karaoke"
         };
 
         static string[] TwitchScopes = new[] {
@@ -59,6 +60,7 @@ namespace NoLifeKing_TwitchBot
             "bits:read",
             "channel:edit:commercial",
             "channel:manage:broadcast",
+            "channel:manage:redemptions",
             "channel:moderate",
             "channel:read:hype_train",
             "channel:read:redemptions",
@@ -362,12 +364,16 @@ namespace NoLifeKing_TwitchBot
             TwitchIRCClient = new TwitchClient();
             var creds = new ConnectionCredentials(TwitchIRCName, TwitchAPIClient.Settings.AccessToken);
 
+            TwitchIRCClient.OnJoinedChannel -= (sender, args) => channel = TwitchIRCClient.GetJoinedChannel(args.Channel);
             TwitchIRCClient.OnJoinedChannel += (sender, args) => channel = TwitchIRCClient.GetJoinedChannel(args.Channel);
+            TwitchIRCClient.OnLog -= (sender, args) => HandleIRCLog(args);
             TwitchIRCClient.OnLog += (sender, args) => HandleIRCLog(args);
 
+            TwitchIRCClient.OnChatCommandReceived -= TwitchIRCClient_OnChatCommandReceived;
             TwitchIRCClient.OnChatCommandReceived += TwitchIRCClient_OnChatCommandReceived;
 
             TwitchIRCClient.AutoReListenOnException = true;
+            TwitchIRCClient.OnConnectionError -= TwitchIRCClient_OnConnectionError;
             TwitchIRCClient.OnConnectionError += TwitchIRCClient_OnConnectionError;
 
             TwitchIRCClient.Initialize(creds, TwitchIRCName);
@@ -396,16 +402,34 @@ namespace NoLifeKing_TwitchBot
             switch (commandIdentifier)
             {
                 case "discord":
-                    await ReplyToService(isIRC, "You can join my discord by clicking this link: https://discord.gg/6fP8vWW");
+                    await ReplyToService(isIRC, "You can join my Discord by clicking this link: https://nolifeking85.tv/discord/");
+                    break;
+                case "journallimpet":
+                    await ReplyToService(isIRC, "Check out my service Journal Limpet at https://journal-limpet.com (Discord: https://discord.gg/aYwysrb66b )");
+                    break;
+                case "catty":
+                    await ReplyToService(isIRC, "Check out Catty & Batty on steam! https://store.steampowered.com/app/1483470/Catty__Batty_The_Spirit_Guide/");
                     break;
                 case "commands":
                     await ReplyToService(isIRC, string.Join(", ", availableCommands.Select(s => $"!{s}")));
                     break;
+                case "karaoke":
+                    await ReplyToService(isIRC, "This is the list of songs that I.. maybe can sing! https://www.youtube.com/playlist?list=PLpcRmU7aWpPLvofFX3x0N3LKNr7TTaeL0");
+                    await ReplyToService(isIRC, "Select one and post the link in the channel, and I'll sing it when I get a moment to breathe");
+                    break;
                 case "access":
-                    if (isAuthorized) await HandleAccessCommand(isIRC, arguments);
+                    if (isAuthorized)
+                    {
+                        await HandleAccessCommand(isIRC, arguments);
+                    }
+
                     break;
                 case "counter":
-                    if (isAuthorized) await HandleCounterCommand(isIRC, arguments);
+                    if (isAuthorized)
+                    {
+                        await HandleCounterCommand(isIRC, arguments);
+                    }
+
                     break;
             }
         }
@@ -468,7 +492,6 @@ namespace NoLifeKing_TwitchBot
             else
             {
                 await _lastDiscordChannel?.SendMessageAsync(response);
-                _lastDiscordChannel = null;
             }
         }
 
@@ -478,8 +501,9 @@ namespace NoLifeKing_TwitchBot
 
             TwitchPubSubClient.OnPubSubServiceConnected += (sender, args) =>
             {
-                TwitchPubSubClient.ListenToBitsEvents(channelId);
+                TwitchPubSubClient.ListenToBitsEventsV2(channelId);
                 TwitchPubSubClient.ListenToRewards(channelId);
+                //TwitchPubSubClient.ListenToChannelPoints(channelId);
                 TwitchPubSubClient.ListenToFollows(channelId);
                 TwitchPubSubClient.ListenToSubscriptions(channelId);
                 TwitchPubSubClient.ListenToRaid(channelId);
@@ -514,6 +538,12 @@ namespace NoLifeKing_TwitchBot
         {
             if (args.Data.Contains("PONG")) return;
 
+            /*if (args.Data.Contains("redemption-status-update") && args.Data.Contains("ACTION_TAKEN"))
+            {
+
+                return;
+            }*/
+
             LogToConsole(JsonConvert.DeserializeObject(args.Data));
         }
 
@@ -543,8 +573,17 @@ namespace NoLifeKing_TwitchBot
 
             if (args.Status == "ACTION_TAKEN")
             {
-                TwitchIRCClient.SendMessage(channel, $"I completed '{args.RewardTitle}' redeemed by @{args.DisplayName}!");
+                SendRedeemedReward(args);
             }
+        }
+
+        private static void SendRedeemedReward(TwitchLib.PubSub.Events.OnRewardRedeemedArgs args)
+        {
+            if (!TwitchIRCClient.IsConnected)
+            {
+                SetupIRCClient();
+            }
+            TwitchIRCClient.SendMessage(channel, $"I completed '{args.RewardTitle}' redeemed by @{args.DisplayName}!");
         }
 
         private static void LogToConsole<T>(T logData)

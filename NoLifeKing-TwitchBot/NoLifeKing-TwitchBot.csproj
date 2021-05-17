@@ -2,18 +2,18 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net5.0</TargetFramework>
     <RootNamespace>NoLifeKing_TwitchBot</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Discord.Net" Version="2.2.0" />
+    <PackageReference Include="Discord.Net" Version="2.3.1" />
     <PackageReference Include="itssimple.KeyVault.Client" Version="1.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Hosting" Version="2.2.7" />
-    <PackageReference Include="Microsoft.AspNetCore.Owin" Version="3.1.9" />
-    <PackageReference Include="TwitchLib.Api" Version="3.1.4-CI-20201204-31" />
-    <PackageReference Include="TwitchLib.Client" Version="3.1.6-CI-20201202-12" />
-    <PackageReference Include="TwitchLib.PubSub" Version="3.1.5-CI-20201205-13" />
+    <PackageReference Include="Microsoft.AspNetCore.Owin" Version="5.0.5" />
+    <PackageReference Include="TwitchLib.Api" Version="3.2.3" />
+    <PackageReference Include="TwitchLib.Client" Version="3.2.2" />
+    <PackageReference Include="TwitchLib.PubSub" Version="3.2.3-preview-5500be4a524d8812e7bd37de4288610422b41fe6" />
     <PackageReference Include="WebSocketSharp-netstandard" Version="1.0.1" />
   </ItemGroup>
 
